@@ -203,46 +203,8 @@ def process_email(msg, month, ws_result, email_index, wb_student):
     #['时间', '发件人', '学号', '班级', '邮箱', '主题', '作业', '试验报告', '备注', '附件名字']
     record_row = [email_index, emailTime, stu_name, stu_id, stu_class, addr, emailSubJect, is_work_zuoye, is_report, "", str(attachment_files)]
     ws_result.append(record_row)
-
     return 1
-# indent用于缩进显示:
-def parse_email(msg, indent):
-    if indent == 0:
-        # 邮件的From, To, Subject存在于根对象上:
-        for header in ['From', 'To', 'Subject']:
-            value = msg.get(header, '')
-            if value:
-                if header=='Subject':
-                    # 需要解码Subject字符串:
-                    value = decode_str(value)
-                else:
-                    # 需要解码Email地址:
-                    hdr, addr = parseaddr(value)
-                    name = decode_str(hdr)
-                    value = u'%s <%s>' % (name, addr)
-            print('%s%s: %s' % ('  ' * indent, header, value))
-    if (msg.is_multipart()):
-        # 如果邮件对象是一个MIMEMultipart,
-        # get_payload()返回list，包含所有的子对象:
-        parts = msg.get_payload()
-        for n, part in enumerate(parts):
-            # 递归打印每一个子对象:
-            return parse_email(part, indent + 1)
-    else:
-        # 邮件对象不是一个MIMEMultipart,
-        # 就根据content_type判断:
-        content_type = msg.get_content_type()
-        if content_type=='text/plain' or content_type=='text/html':
-            # 纯文本或HTML内容:
-            content = msg.get_payload(decode=True)
-            # 要检测文本编码:
-            charset = guess_charset(msg)
-            if charset:
-                content = content.decode(charset)
-            print('%sText: %s' % ('  ' * indent, content))
-        else:
-            # 不是文本，作为附件处理:
-            print('%sAttachment: %s' % ('  ' * indent, content_type))
+
 # 解码
 def decode_str(s):
     value, charset = decode_header(s)[0]
