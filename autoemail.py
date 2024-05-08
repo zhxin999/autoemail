@@ -2,6 +2,7 @@ import poplib
 import datetime
 import email
 import configparser
+import docx        # 读取Word文档
 import os
 from email.parser import Parser
 from email.header import decode_header,Header
@@ -110,7 +111,7 @@ def recv_email_by_pop3():
         elif ret == -1:
             break   
 
-        #email_index += 1
+        email_index += 1
         #if email_index >= 10:
         #    break
 
@@ -160,6 +161,7 @@ def process_email(msg, month, ws_result, email_index, wb_student):
     is_work_zuoye = ''
     is_report = ''
     
+    has_write_log = False
     attachment_files = []
     for part in msg.walk():
         file_name = part.get_filename()  # 获取附件名称类型
@@ -171,28 +173,50 @@ def process_email(msg, month, ws_result, email_index, wb_student):
             filename = dh[0][0]
             if dh[0][1]:
                 filename = decode_str(str(filename, dh[0][1]))  # 将附件名称可读化
+
+            # 判断文件名必须是doc或者docx,否则循环
+            if not filename.endswith('.doc') and not filename.endswith('.docx'):
+                continue
             #在文件名前面加上时间，以防止重名
             timePrefix = date3.strftime('%Y%m%d%H%M%S')
-            folderPrefix = date3.strftime('%Y%m%d')
+
+            folderPrefix = stu_class + "/" + str(stu_id)
+            #folderPrefix = date3.strftime('%Y%m%d')
             #判断folderPrefix目录是否存在，如果不存在就创建
             if not os.path.exists(folderPrefix):
                 os.makedirs(folderPrefix)
 
-            # 判断你后缀名是否为doc或者docx
-            if filename.endswith('.doc') or filename.endswith('.docx'):
-                # 判断文件民中是否包含报告
-                if '报告' in filename:
-                    is_report = '是'
-                else:
-                    is_work_zuoye = '是'
-
-            filename = folderPrefix + "/" + str(stu_id) + "_" + timePrefix + "_" + filename
-            attachment_files.append(filename)
+            fullfilename = folderPrefix + "/" + timePrefix + "_" + filename
+            attachment_files.append(fullfilename)
             data = part.get_payload(decode=True)  # 下载附件
-            with open(filename, 'wb') as f: # 在当前目录下创建文件，注意二进制文件需要用wb模式打开
+            with open(fullfilename, 'wb') as f: # 在当前目录下创建文件，注意二进制文件需要用wb模式打开
             #with open('指定目录路径'+filename, 'wb') as f: 也可以指定下载目录
                 f.write(data)  # 保存附件
+                f.close()
             #print(f'附件 {filename} 已下载完成')
+            # 看看文件名是否后缀为.docx
+            filetype = docx_file_detect(fullfilename)
+
+            is_report = ''
+            is_work_zuoye = ''
+            
+            #根据文件名字重新命名文件，如果是实验报告就加上实验报告，如果是作业就加上作业
+            if filetype == 1:
+                #重新命名文件
+                os.rename(fullfilename, folderPrefix + "/实验报告_" + timePrefix + "_" + filename)
+                is_report = '是'
+                fullfilename = folderPrefix + "/实验报告_" + timePrefix + "_" + filename
+            elif filetype == 2:
+                #重新命名文件
+                os.rename(fullfilename, folderPrefix + "/作业_" + timePrefix + "_" + filename)
+                fullfilename = folderPrefix + "/作业_" + timePrefix + "_" + filename
+                is_work_zuoye = '是'
+
+            record_row = [email_index, emailTime, stu_name, stu_id, stu_class, addr, emailSubJect, is_work_zuoye, is_report, "", fullfilename]
+            ws_result.append(record_row)
+
+            has_write_log = True
+
         elif contentType == 'text/plain': #or contentType == 'text/html':
             # 输出正文 也可以写入文件
             data = part.get_payload(decode=True)
@@ -200,10 +224,49 @@ def process_email(msg, month, ws_result, email_index, wb_student):
             #print('正文：',content)
             emailContent += content
 
+    # 如果没有附件，我就认为他可能是用文本交的作业
+    if not has_write_log:
+        record_row = [email_index, emailTime, stu_name, stu_id, stu_class, addr, emailSubJect, '', '', "", str(attachment_files)]
+        ws_result.append(record_row)
+
     #['时间', '发件人', '学号', '班级', '邮箱', '主题', '作业', '试验报告', '备注', '附件名字']
-    record_row = [email_index, emailTime, stu_name, stu_id, stu_class, addr, emailSubJect, is_work_zuoye, is_report, "", str(attachment_files)]
-    ws_result.append(record_row)
+    
     return 1
+# 分析docx文件内容，看看是不是实验报告
+def docx_file_detect(filename):
+    #只处理docx,其他的默认当做不认识的文件
+    if not filename.endswith('.docx'):
+        return 0
+    
+    #判断文件名里面是否包含作业或者实验报告
+    if '作业' in filename:
+        return 2
+    if '报告' in filename:
+        return 1
+    
+    # 打印文件名字
+    # print(filename)
+    doc_file =docx.Document(filename)
+
+    paragraph_index = 0
+    for paragraph in doc_file.paragraphs:
+        # 搜索关键字，看看是否找到  "试验报告"
+        if "实验报告" in paragraph.text:
+            #print("这是一份实验报告")
+            #print(paragraph.text)
+            return 1
+        if "作业" in paragraph.text:
+            #print("这是一份作业")
+            #print(paragraph.text)
+            return 2
+        
+        paragraph_index += 1
+        if paragraph_index > 10:
+            break
+
+    print("不能确认文件类型")
+    # 默认是没有找到类型
+    return 0
 
 # 解码
 def decode_str(s):
